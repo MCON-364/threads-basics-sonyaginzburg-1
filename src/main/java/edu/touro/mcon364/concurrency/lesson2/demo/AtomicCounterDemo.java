@@ -35,7 +35,7 @@ public class AtomicCounterDemo {
     // ── compare-and-set example ─────────────────────────────────────────────
     private final AtomicInteger sequenceId = new AtomicInteger(1_000);
 
-    /**
+    /*
      * Reserve the next ID only if the current value is still {@code expected}.
      * Returns the reserved ID, or -1 if the value changed in the meantime.
      */
