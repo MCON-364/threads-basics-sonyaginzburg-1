@@ -29,14 +29,20 @@ public class IndependentCounters {
 
     // TODO: add two separate lock fields — one to guard readCount, one to guard writeCount.
     //       Why two locks instead of one?  What contention does that eliminate?
-
+    private final Lock readCountLock = new ReentrantLock();
+    private final Lock writeCountLock = new ReentrantLock();
     /**
      * Record a read operation.
      * TODO: replace the synchronized keyword with an explicit lock.
      *       Remember: always release the lock even if an exception is thrown.
      */
-    public synchronized void read() {
-        readCount++;
+    public void read() {
+        readCountLock.lock();
+        try {
+            readCount++;
+        } finally {
+            readCountLock.unlock();
+        }
     }
 
     /**
@@ -44,8 +50,13 @@ public class IndependentCounters {
      * TODO: replace the synchronized keyword with an explicit lock.
      *       Remember: always release the lock even if an exception is thrown.
      */
-    public synchronized void write() {
-        writeCount++;
+    public void write() {
+        writeCountLock.lock();
+        try {
+            writeCount++;
+        } finally {
+            writeCountLock.unlock();
+        }
     }
 
     public int getReadCount()  { return readCount; }
