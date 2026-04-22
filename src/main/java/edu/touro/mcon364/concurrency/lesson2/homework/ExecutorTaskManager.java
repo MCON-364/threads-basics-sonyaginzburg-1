@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Homework — Executor-backed task manager with atomic IDs.
@@ -55,28 +57,31 @@ public class ExecutorTaskManager {
     /* ── SYNCHRONIZER CHOICE ────────────────────────────────────────────────
      * TODO: In 1–3 sentences, explain which synchronizer you would add to
      *       wait for a complete batch before the next batch starts, and why.
+     * CyclicBarrier because it makes a fixed group wait until everyone arrives which
+     *  is exactly what this assignment is asking for.
      * ──────────────────────────────────────────────────────────────────────*/
 
     private static final int POOL_SIZE = 4;
 
-    // TODO: declare the thread pool — what factory method gives you a fixed-size pool?
-
-    // TODO: declare the ID counter — what type guarantees uniqueness without synchronized?
+    //  declare the thread pool — what factory method gives you a fixed-size pool?
+    ExecutorService pool = Executors.newFixedThreadPool(POOL_SIZE);
+    //  declare the ID counter — what type guarantees uniqueness without synchronized?
+    private final AtomicInteger safeCount = new AtomicInteger();
 
     // List of tasks that have finished — written by worker threads, so needs protection
     private final List<Task> completedTasks = new ArrayList<>();
 
-    // TODO: declare the lock that will protect completedTasks
-
+    //  declare the lock that will protect completedTasks
+    private final Lock lock = new ReentrantLock();
     // ── ID generation ────────────────────────────────────────────────────────
 
     /**
      * Returns a unique, auto-incremented task ID.
-     * TODO: generate the next ID atomically — no synchronized keyword allowed
+     *  generate the next ID atomically — no synchronized keyword allowed
      */
     public int nextId() {
-        // TODO: implement
-        return 0;
+        // implement
+        return safeCount.incrementAndGet();
     }
 
     // ── task submission ──────────────────────────────────────────────────────
@@ -89,13 +94,18 @@ public class ExecutorTaskManager {
      * @return a {@link Future<Task>} that will hold the completed task
      */
     public Future<Task> submit(String description, Priority priority) {
-        // TODO: obtain a unique ID for this task
+        //  obtain a unique ID for this task
+        int id = nextId();
+        //  build the Task record
+        Task task = new Task(id, description, priority);
 
-        // TODO: build the Task record
-
-        // TODO: hand the task to the pool as a Callable that processes it and
+        // hand the task to the pool as a Callable that processes it and
         //       returns it when done — return the Future the pool gives you back
-        return null;
+        return pool.submit(()-> {
+            Thread.sleep(10);
+            recordCompleted(task);
+            return task;
+        });
     }
 
     // ── recording completion ─────────────────────────────────────────────────
@@ -106,9 +116,18 @@ public class ExecutorTaskManager {
      * This method is called from worker threads concurrently.
      * TODO: protect the list so that two threads cannot corrupt it at the same time.
      *       Add a comment explaining exactly why a lock is necessary here.
+     *       A lock is necessary bc the worker threads call this method concurrently
+     *       and the Arraylist is not thread safe.
+     *
      */
     private void recordCompleted(Task task) {
-        // TODO: implement
+        //  implement
+        lock.lock();
+        try {
+            completedTasks.add(task);
+        } finally {
+            lock.unlock();
+        }
     }
 
     // ── collecting results ───────────────────────────────────────────────────
@@ -122,7 +141,15 @@ public class ExecutorTaskManager {
      */
     public List<Task> awaitAll(List<Future<Task>> futures) {
         // TODO: implement
-        return new ArrayList<>();
+        List<Task> results = new ArrayList<>();
+        for (Future<Task> f : futures) {
+            try {
+                results.add(f.get());
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return results;
     }
 
     // ── lifecycle ────────────────────────────────────────────────────────────
@@ -135,6 +162,8 @@ public class ExecutorTaskManager {
      */
     public void shutdown() throws InterruptedException {
         // TODO: implement
+        pool.shutdown();
+        pool.awaitTermination(30, TimeUnit.SECONDS);
     }
 
     // ── observability ────────────────────────────────────────────────────────
@@ -143,12 +172,17 @@ public class ExecutorTaskManager {
     public List<Task> getCompletedTasks() {
         // TODO: protect the read with the same lock used in recordCompleted,
         //       then return a defensive copy so callers cannot mutate internal state
-        return null;
+        lock.lock();
+        try {
+            return List.copyOf(completedTasks);
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** Returns the most recently generated ID (useful for assertions). */
     public int getLastIssuedId() {
         // TODO: read the current value from the ID counter
-        return 0;
+        return safeCount.get();
     }
 }
